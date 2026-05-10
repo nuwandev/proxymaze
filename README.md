@@ -1,5 +1,14 @@
 # ProxyMaze '26
 
+[![Build Status](https://img.shields.io/github/actions/workflow/status/your-org/proxymaze/ci.yml?branch=main)](https://github.com/your-org/proxymaze/actions)
+[![Java](https://img.shields.io/badge/Java-21-blue?logo=java)](https://openjdk.org/)
+[![Spring Boot](https://img.shields.io/badge/Spring%20Boot-3-brightgreen?logo=spring)](https://spring.io/projects/spring-boot)
+[![Maven](https://img.shields.io/badge/Maven-3.9%2B-blue?logo=apachemaven)](https://maven.apache.org/)
+[![Docker](https://img.shields.io/badge/Docker-ready-blue?logo=docker)](https://www.docker.com/)
+[![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+[![Visitors](https://visitor-badge.glitch.me/badge?page_id=your-org/proxymaze)](https://github.com/your-org/proxymaze)
+[![GitHub stars](https://img.shields.io/github/stars/your-org/proxymaze?style=social)](https://github.com/your-org/proxymaze)
+
 A real-time proxy pool monitoring and alerting system. Continuously probes a pool of proxy URLs in the background, tracks their health, fires alerts when the failure rate breaches a threshold, and delivers webhook notifications to registered receivers.
 
 Built for the Torch Labs Sri Lanka 2026 Engineering Challenge.
