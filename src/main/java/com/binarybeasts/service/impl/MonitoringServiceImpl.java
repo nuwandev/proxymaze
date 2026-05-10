@@ -4,6 +4,7 @@ import com.binarybeasts.domain.ProxyNode;
 import com.binarybeasts.domain.ProxyStatus;
 import com.binarybeasts.domain.RuntimeConfig;
 import com.binarybeasts.engine.MonitoringEngine;
+import com.binarybeasts.service.AlertService;
 import com.binarybeasts.service.MonitoringService;
 import com.binarybeasts.store.InMemoryStateStore;
 import com.binarybeasts.util.ProxyIdExtractor;
@@ -25,12 +26,14 @@ public class MonitoringServiceImpl implements MonitoringService {
     private final InMemoryStateStore store;
     private final MonitoringEngine engine;
     private final RuntimeConfig config;
+    private final AlertService alertService;
 
     public MonitoringServiceImpl(InMemoryStateStore store, MonitoringEngine engine,
-                                 RuntimeConfig config) {
+                                 RuntimeConfig config, AlertService alertService) {
         this.store = store;
         this.engine = engine;
         this.config = config;
+        this.alertService = alertService;
     }
 
     @Override
@@ -50,7 +53,8 @@ public class MonitoringServiceImpl implements MonitoringService {
     public List<ProxyNode> addProxies(List<String> urls, boolean replace) {
         if (replace) {
             store.clearPool();
-            LogHighlighter.info(log, "Pool", "Replaced — cleared existing proxies");
+            boolean resolved = alertService.resolveActiveAlert("pool replaced");
+            LogHighlighter.info(log, "Pool", "Replaced — cleared existing proxies; active alert resolved={}", resolved);
         }
 
         List<ProxyNode> added = new ArrayList<>();
@@ -83,7 +87,8 @@ public class MonitoringServiceImpl implements MonitoringService {
     public void clearPool() {
         int size = store.getPool().size();
         store.clearPool();
-        LogHighlighter.info(log, "Pool", "Cleared {} proxies — alert history preserved", size);
+        boolean resolved = alertService.resolveActiveAlert("pool cleared");
+        LogHighlighter.info(log, "Pool", "Cleared {} proxies — alert history preserved; active alert resolved={}", size, resolved);
     }
 
     @Override

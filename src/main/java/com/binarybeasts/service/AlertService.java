@@ -13,4 +13,6 @@ public interface AlertService {
     List<Alert> getAllAlerts();
 
     Alert getActiveAlert();
+
+    boolean resolveActiveAlert(String reason);
 }
