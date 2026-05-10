@@ -23,25 +23,23 @@ import java.util.stream.Collectors;
 @RestController
 public class MonitoringController {
 
-    @Autowired
-    private MonitoringService monitoringService;
-    @Autowired
-    private AlertService alertService;
-    @Autowired
-    private MetricsService metricsService;
-    @Autowired
-    private InMemoryStateStore store;
-    @Autowired(required = false)
-    private WebhookService webhookService;
+    private final MonitoringService monitoringService;
+    private final AlertService alertService;
+    private final MetricsService metricsService;
+    private final InMemoryStateStore store;
 
-    // ─── GET /health ────────────────────────────────────────────────────────
+    public MonitoringController(MonitoringService monitoringService, AlertService alertService, MetricsService metricsService, InMemoryStateStore store) {
+        this.monitoringService = monitoringService;
+        this.alertService = alertService;
+        this.metricsService = metricsService;
+        this.store = store;
+    }
 
     @GetMapping("/health")
     public ResponseEntity<?> health() {
         return ResponseEntity.ok(Map.of("status", "ok"));
     }
 
-    // ─── POST /config ────────────────────────────────────────────────────────
 
     @PostMapping("/config")
     public ResponseEntity<?> updateConfig(@RequestBody ConfigRequest req) {
@@ -52,8 +50,6 @@ public class MonitoringController {
         ));
     }
 
-    // ─── GET /config ─────────────────────────────────────────────────────────
-
     @GetMapping("/config")
     public ResponseEntity<?> getConfig() {
         RuntimeConfig cfg = monitoringService.getConfig();
@@ -62,8 +58,6 @@ public class MonitoringController {
                 "request_timeout_ms", cfg.getRequestTimeoutMs()
         ));
     }
-
-    // ─── POST /proxies ────────────────────────────────────────────────────────
 
     @PostMapping("/proxies")
     public ResponseEntity<?> ingestProxies(@RequestBody AddProxiesRequest req) {
@@ -82,8 +76,6 @@ public class MonitoringController {
                 "proxies", proxyList
         ));
     }
-
-    // ─── GET /proxies ─────────────────────────────────────────────────────────
 
     @GetMapping("/proxies")
     public ResponseEntity<?> getProxies() {
@@ -114,8 +106,6 @@ public class MonitoringController {
         return ResponseEntity.ok(response);
     }
 
-    // ─── GET /proxies/{id} ────────────────────────────────────────────────────
-
     @GetMapping("/proxies/{id}")
     public ResponseEntity<?> getProxy(@PathVariable String id) {
         return monitoringService.getProxy(id)
@@ -143,8 +133,6 @@ public class MonitoringController {
                 .orElse(ResponseEntity.notFound().build());
     }
 
-    // ─── GET /proxies/{id}/history ────────────────────────────────────────────
-
     @GetMapping("/proxies/{id}/history")
     public ResponseEntity<?> getProxyHistory(@PathVariable String id) {
         return monitoringService.getProxy(id)
@@ -160,15 +148,11 @@ public class MonitoringController {
                 .orElse(ResponseEntity.notFound().build());
     }
 
-    // ─── DELETE /proxies ──────────────────────────────────────────────────────
-
     @DeleteMapping("/proxies")
     public ResponseEntity<?> clearProxies() {
         monitoringService.clearPool();
         return ResponseEntity.noContent().build();
     }
-
-    // ─── GET /alerts ──────────────────────────────────────────────────────────
 
     @GetMapping("/alerts")
     public ResponseEntity<?> getAlerts() {
@@ -179,8 +163,6 @@ public class MonitoringController {
     }
 
     private Map<String, Object> toAlertMap(Alert alert) {
-        // Active alert → live failed proxy IDs
-        // Resolved alert → frozen snapshot
         List<String> failedIds;
         if (alert.getStatus() == AlertStatus.ACTIVE) {
             failedIds = store.getAllProxies().stream()
@@ -206,8 +188,6 @@ public class MonitoringController {
         return m;
     }
 
-    // ─── POST /webhooks ───────────────────────────────────────────────────────
-
     @PostMapping("/webhooks")
     public ResponseEntity<?> registerWebhook(@RequestBody WebhookRequest req) {
         String id = "wh-" + System.currentTimeMillis();
@@ -219,7 +199,6 @@ public class MonitoringController {
         ));
     }
 
-    // ─── POST /integrations ───────────────────────────────────────────────────
 
     @PostMapping("/integrations")
     public ResponseEntity<?> registerIntegration(@RequestBody IntegrationRequest req) {
@@ -238,8 +217,6 @@ public class MonitoringController {
                 "status", "accepted"
         ));
     }
-
-    // ─── GET /metrics ─────────────────────────────────────────────────────────
 
     @GetMapping("/metrics")
     public ResponseEntity<?> getMetrics() {
