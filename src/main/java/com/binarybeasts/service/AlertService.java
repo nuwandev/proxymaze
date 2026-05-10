@@ -13,4 +13,10 @@ public interface AlertService {
     List<Alert> getAllAlerts();
 
     Alert getActiveAlert();
+
+    List<String> getFrozenFailedIds(Alert alert);
+
+    List<String> getCurrentFailedIds();
+
+    boolean resolveActiveAlert(String reason);
 }

@@ -6,6 +6,9 @@ import com.binarybeasts.domain.ProxyStatus;
 import com.binarybeasts.service.AlertService;
 import com.binarybeasts.service.WebhookService;
 import com.binarybeasts.store.InMemoryStateStore;
+import com.binarybeasts.util.LogHighlighter;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
@@ -16,6 +19,8 @@ import java.util.stream.Collectors;
 
 @Service
 public class AlertServiceImpl implements AlertService {
+
+    private static final Logger log = LoggerFactory.getLogger(AlertServiceImpl.class);
 
     private static final double THRESHOLD = 0.20;
 
@@ -30,19 +35,22 @@ public class AlertServiceImpl implements AlertService {
 
     @Override
     public void evaluate(Collection<ProxyNode> proxies) {
+        Alert currentActive = store.getActiveAlert();
+
         List<ProxyNode> checked = proxies.stream()
                 .filter(p -> p.getStatus() != ProxyStatus.PENDING)
                 .collect(Collectors.toList());
 
-        if (checked.isEmpty()) return;
+        if (checked.isEmpty()) {
+            resolveActiveAlert("no checked proxies");
+            return;
+        }
 
         long downCount = checked.stream()
                 .filter(p -> p.getStatus() == ProxyStatus.DOWN)
                 .count();
 
         double failureRate = (double) downCount / checked.size();
-
-        Alert currentActive = store.getActiveAlert();
 
         if (failureRate >= THRESHOLD) {
             if (currentActive == null) {
@@ -54,6 +62,11 @@ public class AlertServiceImpl implements AlertService {
                 resolveAlert(currentActive);
             }
         }
+
+        LogHighlighter.debug(log, "Alert", "Evaluated - failureRate={:.2f}%, threshold=20%, activeAlert={}",
+                failureRate * 100,
+                store.getActiveAlert() != null ? store.getActiveAlert().getAlertId() : "none");
+
     }
 
     private void fireAlert(double failureRate, List<ProxyNode> checked, long downCount) {
@@ -73,6 +86,13 @@ public class AlertServiceImpl implements AlertService {
 
         store.setActiveAlert(alert);
 
+        LogHighlighter.warn(log, "Alert", "FIRED - id={}, failureRate={:.2f}%, down={}/{}, failedIds={}",
+                alert.getAlertId(),
+                failureRate * 100,
+                downCount,
+                checked.size(),
+                failedIds);
+
         if (webhookService != null) {
             webhookService.enqueue(alert, "alert.fired");
         }
@@ -81,6 +101,8 @@ public class AlertServiceImpl implements AlertService {
     private void resolveAlert(Alert alert) {
         alert.resolve(Instant.now());
         store.clearActiveAlert();
+
+        LogHighlighter.info(log, "Alert", "RESOLVED - id={}, resolvedAt={}", alert.getAlertId(), alert.getResolvedAt());
 
         if (webhookService != null) {
             webhookService.enqueue(alert, "alert.resolved");
@@ -95,5 +117,33 @@ public class AlertServiceImpl implements AlertService {
     @Override
     public Alert getActiveAlert() {
         return store.getActiveAlert();
+    }
+
+    @Override
+    public List<String> getFrozenFailedIds(Alert alert) {
+        if (alert == null) {
+            return List.of();
+        }
+        return alert.getFailedProxyIds();
+    }
+
+    @Override
+    public List<String> getCurrentFailedIds() {
+        return store.getAllProxies().stream()
+                .filter(p -> p.getStatus() == ProxyStatus.DOWN)
+                .map(ProxyNode::getId)
+                .collect(Collectors.toList());
+    }
+
+    @Override
+    public boolean resolveActiveAlert(String reason) {
+        Alert currentActive = store.getActiveAlert();
+        if (currentActive == null) {
+            return false;
+        }
+
+        resolveAlert(currentActive);
+        LogHighlighter.info(log, "Alert", "Resolved active alert due to {}", reason);
+        return true;
     }
 }
