@@ -93,14 +93,11 @@ public class MonitoringServiceImpl implements MonitoringService {
 
     @Override
     public double calculateFailureRate() {
-        Collection<ProxyNode> proxies = store.getAllProxies();
-        long checked = proxies.stream()
-                .filter(p -> p.getStatus() != ProxyStatus.PENDING)
-                .count();
-        if (checked == 0) return 0.0;
-        long down = proxies.stream()
+        Collection<ProxyNode> all = store.getAllProxies();
+        if (all.isEmpty()) return 0.0;
+        long down = all.stream()
                 .filter(p -> p.getStatus() == ProxyStatus.DOWN)
                 .count();
-        return (double) down / checked;
+        return (double) down / all.size();
     }
 }
