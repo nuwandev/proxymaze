@@ -1,8 +1,5 @@
 package com.binarybeasts.domain;
 
-import org.springframework.stereotype.Component;
-
-@Component
 public class RuntimeConfig {
     private volatile int checkIntervalSeconds = 30;
     private volatile int requestTimeoutMs = 5000;
