@@ -35,32 +35,24 @@ public class AlertServiceImpl implements AlertService {
 
     @Override
     public void evaluate(Collection<ProxyNode> proxies) {
-        Alert currentActive = store.getActiveAlert();
-
-        List<ProxyNode> checked = proxies.stream()
-                .filter(p -> p.getStatus() != ProxyStatus.PENDING)
-                .collect(Collectors.toList());
-
-        if (checked.isEmpty()) {
-            resolveActiveAlert("no checked proxies");
+        if (proxies.isEmpty()) {
+            Alert active = store.getActiveAlert();
+            if (active != null) resolveAlert(active);
             return;
         }
 
-        long downCount = checked.stream()
+        long total = proxies.size();
+        long down = proxies.stream()
                 .filter(p -> p.getStatus() == ProxyStatus.DOWN)
                 .count();
 
-        double failureRate = (double) downCount / checked.size();
+        double failureRate = (double) down / total;
+        Alert currentActive = store.getActiveAlert();
 
         if (failureRate >= THRESHOLD) {
-            if (currentActive == null) {
-                fireAlert(failureRate, checked, downCount);
-            }
-
+            if (currentActive == null) fireAlert(failureRate, proxies, down);
         } else {
-            if (currentActive != null) {
-                resolveAlert(currentActive);
-            }
+            if (currentActive != null) resolveAlert(currentActive);
         }
 
         LogHighlighter.debug(log, "Alert", "Evaluated - failureRate={:.2f}%, threshold=20%, activeAlert={}",
@@ -69,7 +61,7 @@ public class AlertServiceImpl implements AlertService {
 
     }
 
-    private void fireAlert(double failureRate, List<ProxyNode> checked, long downCount) {
+    private void fireAlert(double failureRate, Collection<ProxyNode> checked, long downCount) {
         List<String> failedIds = checked.stream()
                 .filter(p -> p.getStatus() == ProxyStatus.DOWN)
                 .map(ProxyNode::getId)
