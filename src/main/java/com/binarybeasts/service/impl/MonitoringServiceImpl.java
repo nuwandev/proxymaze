@@ -7,6 +7,9 @@ import com.binarybeasts.engine.MonitoringEngine;
 import com.binarybeasts.service.MonitoringService;
 import com.binarybeasts.store.InMemoryStateStore;
 import com.binarybeasts.util.ProxyIdExtractor;
+import com.binarybeasts.util.LogHighlighter;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
@@ -16,6 +19,8 @@ import java.util.Optional;
 
 @Service
 public class MonitoringServiceImpl implements MonitoringService {
+
+    private static final Logger log = LoggerFactory.getLogger(MonitoringServiceImpl.class);
 
     private final InMemoryStateStore store;
     private final MonitoringEngine engine;
@@ -38,11 +43,15 @@ public class MonitoringServiceImpl implements MonitoringService {
         config.setCheckIntervalSeconds(intervalSeconds);
         config.setRequestTimeoutMs(timeoutMs);
         engine.reschedule();
+        LogHighlighter.info(log, "Config", "Updated — interval={}s, timeout={}ms", intervalSeconds, timeoutMs);
     }
 
     @Override
     public List<ProxyNode> addProxies(List<String> urls, boolean replace) {
-        if (replace) store.clearPool();
+        if (replace) {
+            store.clearPool();
+            LogHighlighter.info(log, "Pool", "Replaced — cleared existing proxies");
+        }
 
         List<ProxyNode> added = new ArrayList<>();
         for (String url : urls) {
@@ -55,6 +64,8 @@ public class MonitoringServiceImpl implements MonitoringService {
                 added.add(store.findProxy(id).get());
             }
         }
+
+        LogHighlighter.info(log, "Pool", "Added {} proxies — pool size now {}", added.size(), store.getPool().size());
         return added;
     }
 
@@ -70,7 +81,9 @@ public class MonitoringServiceImpl implements MonitoringService {
 
     @Override
     public void clearPool() {
+        int size = store.getPool().size();
         store.clearPool();
+        LogHighlighter.info(log, "Pool", "Cleared {} proxies — alert history preserved", size);
     }
 
     @Override

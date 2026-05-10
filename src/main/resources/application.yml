@@ -1,0 +1,8 @@
+logging:
+  level:
+    com.binarybeasts: DEBUG
+    root: INFO
+  pattern:
+    console: "%d{HH:mm:ss.SSS} [%thread] %clr(%-5level){cyan} %clr(%logger{36}){blue} %clr(-){faint} %msg%n"
+  charset:
+    console: UTF-8
