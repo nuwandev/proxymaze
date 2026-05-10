@@ -6,3 +6,8 @@ logging:
     console: "%d{HH:mm:ss.SSS} [%thread] %clr(%-5level){cyan} %clr(%logger{36}){blue} %clr(-){faint} %msg%n"
   charset:
     console: UTF-8
+
+spring:
+  Jackson:
+    deserialization:
+      fail-on-unknown-properties: false
