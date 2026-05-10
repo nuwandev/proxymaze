@@ -11,3 +11,6 @@ spring:
   Jackson:
     deserialization:
       fail-on-unknown-properties: false
+
+app:
+base-url: https://proxymaze-fixb.onrender.com
