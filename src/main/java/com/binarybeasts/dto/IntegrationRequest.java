@@ -11,6 +11,9 @@ public class IntegrationRequest {
     @JsonProperty("webhook_url") private String webhookUrl;
     @JsonProperty("username") private String username;
     @JsonProperty("events") private List<String> events;
+
     public String getType() { return type; }
     public String getWebhookUrl() { return webhookUrl; }
+    public String getUsername() { return username; }
+    public List<String> getEvents() { return events; }
 }

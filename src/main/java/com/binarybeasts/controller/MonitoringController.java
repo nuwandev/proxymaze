@@ -224,6 +224,14 @@ public class MonitoringController {
     @PostMapping("/integrations")
     public ResponseEntity<?> registerIntegration(@RequestBody IntegrationRequest req) {
         String id = "int-" + System.currentTimeMillis();
+        IntegrationRegistration reg = new IntegrationRegistration(
+                id,
+                req.getType(),
+                req.getWebhookUrl(),
+                req.getUsername(),
+                req.getEvents() != null ? req.getEvents() : List.of("alert.fired", "alert.resolved")
+        );
+        store.addIntegration(reg);
         return ResponseEntity.status(201).body(Map.of(
                 "id", id,
                 "type", req.getType(),

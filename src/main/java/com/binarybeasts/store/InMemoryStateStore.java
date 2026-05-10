@@ -1,6 +1,7 @@
 package com.binarybeasts.store;
 
 import com.binarybeasts.domain.Alert;
+import com.binarybeasts.domain.IntegrationRegistration;
 import com.binarybeasts.domain.ProxyNode;
 import com.binarybeasts.domain.WebhookRegistration;
 import org.springframework.stereotype.Component;
@@ -91,5 +92,16 @@ public class InMemoryStateStore {
 
     public List<WebhookRegistration> getWebhooks() {
         return webhooks;
+    }
+
+    private final List<IntegrationRegistration> integrations =
+            Collections.synchronizedList(new ArrayList<>());
+
+    public void addIntegration(IntegrationRegistration reg) {
+        integrations.add(reg);
+    }
+
+    public List<IntegrationRegistration> getIntegrations() {
+        return Collections.unmodifiableList(integrations);
     }
 }
