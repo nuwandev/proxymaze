@@ -2,7 +2,7 @@ package com.binarybeasts.engine;
 
 import com.binarybeasts.domain.ProxyNode;
 import com.binarybeasts.domain.RuntimeConfig;
-import com.binarybeasts.service.AlertService;
+import com.binarybeasts.service.impl.AlertServiceImpl;
 import com.binarybeasts.store.InMemoryStateStore;
 import jakarta.annotation.PostConstruct;
 import org.springframework.stereotype.Component;
@@ -26,22 +26,20 @@ import java.util.concurrent.atomic.AtomicBoolean;
 public class MonitoringEngine {
 
     private final InMemoryStateStore store;
-    private final AlertService alertService;
+    private final AlertServiceImpl alertService;
     private final RuntimeConfig config;
 
     private final AtomicBoolean cycleRunning = new AtomicBoolean(false);
 
     private final ScheduledExecutorService scheduler =
             Executors.newSingleThreadScheduledExecutor();
-
-    private ScheduledFuture<?> currentTask;
     private final Object schedulerLock = new Object();
-
     private final HttpClient httpClient = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(10))
             .build();
+    private ScheduledFuture<?> currentTask;
 
-    public MonitoringEngine(InMemoryStateStore store, AlertService alertService,
+    public MonitoringEngine(InMemoryStateStore store, AlertServiceImpl alertService,
                             RuntimeConfig config) {
         this.store = store;
         this.alertService = alertService;
