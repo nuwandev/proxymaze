@@ -33,13 +33,11 @@ public class MonitoringEngine {
 
     private final ScheduledExecutorService scheduler =
             Executors.newSingleThreadScheduledExecutor();
-
-    private ScheduledFuture<?> currentTask;
     private final Object schedulerLock = new Object();
-
     private final HttpClient httpClient = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(10))
             .build();
+    private ScheduledFuture<?> currentTask;
 
     public MonitoringEngine(InMemoryStateStore store, AlertService alertService,
                             RuntimeConfig config) {
