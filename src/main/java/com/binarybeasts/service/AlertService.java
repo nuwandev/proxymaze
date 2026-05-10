@@ -14,5 +14,9 @@ public interface AlertService {
 
     Alert getActiveAlert();
 
+    List<String> getFrozenFailedIds(Alert alert);
+
+    List<String> getCurrentFailedIds();
+
     boolean resolveActiveAlert(String reason);
 }

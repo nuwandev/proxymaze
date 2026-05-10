@@ -120,6 +120,22 @@ public class AlertServiceImpl implements AlertService {
     }
 
     @Override
+    public List<String> getFrozenFailedIds(Alert alert) {
+        if (alert == null) {
+            return List.of();
+        }
+        return alert.getFailedProxyIds();
+    }
+
+    @Override
+    public List<String> getCurrentFailedIds() {
+        return store.getAllProxies().stream()
+                .filter(p -> p.getStatus() == ProxyStatus.DOWN)
+                .map(ProxyNode::getId)
+                .collect(Collectors.toList());
+    }
+
+    @Override
     public boolean resolveActiveAlert(String reason) {
         Alert currentActive = store.getActiveAlert();
         if (currentActive == null) {
