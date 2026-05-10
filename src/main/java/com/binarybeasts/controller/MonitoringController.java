@@ -6,6 +6,7 @@ import com.binarybeasts.domain.ProxyCheckRecord;
 import com.binarybeasts.domain.ProxyNode;
 import com.binarybeasts.domain.ProxyStatus;
 import com.binarybeasts.domain.RuntimeConfig;
+import com.binarybeasts.domain.WebhookRegistration;
 import com.binarybeasts.dto.AlertResponse;
 import com.binarybeasts.dto.HealthResponse;
 import com.binarybeasts.dto.MetricsResponse;
@@ -23,6 +24,7 @@ import com.binarybeasts.service.MetricsSnapshot;
 import com.binarybeasts.service.MonitoringService;
 import com.binarybeasts.store.InMemoryStateStore;
 
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -35,23 +37,22 @@ import org.springframework.web.server.ResponseStatusException;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 @RestController
 public class MonitoringController {
-    private final InMemoryStateStore store;
-    private final MonitoringService monitoringService;
-    private final AlertService alertService;
-    private final MetricsService metricsService;
+    @Autowired
+    private InMemoryStateStore store;
 
-    public MonitoringController(InMemoryStateStore store,
-                                MonitoringService monitoringService,
-                                AlertService alertService,
-                                MetricsService metricsService) {
-        this.store = store;
-        this.monitoringService = monitoringService;
-        this.alertService = alertService;
-        this.metricsService = metricsService;
-    }
+    @Autowired
+    private MonitoringService monitoringService;
+
+    @Autowired
+    private AlertService alertService;
+
+    @Autowired
+    private MetricsService metricsService;
 
     @GetMapping("/health")
     public HealthResponse health() {
@@ -61,13 +62,13 @@ public class MonitoringController {
     @PostMapping("/config")
     public RuntimeConfigResponse updateConfig(@RequestBody RuntimeConfigRequest request) {
         requireConfig(request);
-        store.updateRuntimeConfig(request.checkIntervalSeconds(), request.requestTimeoutMs());
-        return toRuntimeConfigResponse(store.getRuntimeConfig());
+        monitoringService.updateConfig(request.checkIntervalSeconds(), request.requestTimeoutMs());
+        return toRuntimeConfigResponse(monitoringService.getConfig());
     }
 
     @GetMapping("/config")
     public RuntimeConfigResponse getConfig() {
-        return toRuntimeConfigResponse(store.getRuntimeConfig());
+        return toRuntimeConfigResponse(monitoringService.getConfig());
     }
 
     @PostMapping("/proxies")
@@ -76,12 +77,11 @@ public class MonitoringController {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "proxies is required");
         }
 
-        List<ProxyNode> proxies = Boolean.TRUE.equals(request.replace())
-                ? store.replaceProxies(request.proxies())
-                : store.addProxies(request.proxies());
+        List<ProxyNode> proxies = monitoringService.addProxies(request.proxies(),
+                Boolean.TRUE.equals(request.replace()));
 
         return ResponseEntity.status(HttpStatus.ACCEPTED)
-                .body(new ProxyIngestionResponse(true, proxies.stream().map(this::toSummaryResponse).toList()));
+                .body(new ProxyIngestionResponse(proxies.size(), proxies.stream().map(this::toSummaryResponse).toList()));
     }
 
     @GetMapping("/proxies")
@@ -112,7 +112,7 @@ public class MonitoringController {
 
     @DeleteMapping("/proxies")
     public ResponseEntity<Void> clearProxies() {
-        store.clearProxies();
+        monitoringService.clearPool();
         return ResponseEntity.noContent().build();
     }
 
@@ -131,6 +131,19 @@ public class MonitoringController {
                 snapshot.totalAlerts(),
                 snapshot.webhookDeliveries()
         );
+    }
+
+    @PostMapping("/webhooks")
+    public ResponseEntity<?> registerWebhook(@RequestBody Map<String, String> body) {
+        String url = body.get("url");
+        String id = "wh-" + System.currentTimeMillis();
+        store.addWebhook(new WebhookRegistration(id, url));
+        return ResponseEntity.ok(Map.of("webhook_id", id, "url", url));
+    }
+
+    @PostMapping("/integrations")
+    public ResponseEntity<?> registerIntegration(@RequestBody Map<String, Object> body) {
+        return ResponseEntity.ok(Map.of("status", "accepted"));
     }
 
     private void requireConfig(RuntimeConfigRequest request) {
@@ -177,13 +190,20 @@ public class MonitoringController {
     }
 
     private AlertResponse toAlertResponse(Alert alert) {
+        List<String> failedIds = alert.getStatus() == AlertStatus.ACTIVE
+                ? store.snapshotProxies().stream()
+                    .filter(p -> p.getStatus() == ProxyStatus.DOWN)
+                    .map(ProxyNode::getId)
+                    .collect(Collectors.toList())
+                : alert.getFailedProxyIds();
+
         return new AlertResponse(
                 alert.getAlertId(),
                 statusValue(alert.getStatus()),
                 alert.getFailureRate(),
                 alert.getTotalProxies(),
                 alert.getFailedProxies(),
-                alert.getFailedProxyIds(),
+                failedIds,
                 alert.getThreshold(),
                 alert.getFiredAt(),
                 alert.getResolvedAt(),
