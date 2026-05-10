@@ -70,6 +70,7 @@ public class MonitoringServiceImpl implements MonitoringService {
         }
 
         LogHighlighter.info(log, "Pool", "Added {} proxies — pool size now {}", added.size(), store.getPool().size());
+        engine.reschedule();
         return added;
     }
 
