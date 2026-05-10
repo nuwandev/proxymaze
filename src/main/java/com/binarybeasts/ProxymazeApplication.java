@@ -2,10 +2,12 @@ package com.binarybeasts;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.scheduling.annotation.EnableScheduling;
 
 @SpringBootApplication
-public class Main {
+@EnableScheduling
+public class ProxymazeApplication {
     public static void main(String[] args) {
-        SpringApplication.run(Main.class);
+        SpringApplication.run(ProxymazeApplication.class);
     }
 }

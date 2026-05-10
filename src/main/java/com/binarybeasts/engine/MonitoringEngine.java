@@ -37,13 +37,21 @@ public class MonitoringEngine {
 
     private final AtomicBoolean cycleRunning = new AtomicBoolean(false);
 
+    // Non daemon thread because keeps running on Render, won't get killed when idle on free triel
     private final ScheduledExecutorService scheduler =
-            Executors.newSingleThreadScheduledExecutor();
+            Executors.newSingleThreadScheduledExecutor(r -> {
+                Thread t = new Thread(r, "monitoring-engine");
+                t.setDaemon(false);
+                return t;
+            });
+
     private final Object schedulerLock = new Object();
+
     private final HttpClient httpClient = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(10))
             .build();
-    private ScheduledFuture<?> currentTask;
+
+    private volatile ScheduledFuture<?> currentTask;
 
     public MonitoringEngine(InMemoryStateStore store, AlertService alertService,
                             RuntimeConfig config) {
@@ -59,7 +67,6 @@ public class MonitoringEngine {
                 config.getCheckIntervalSeconds(), config.getRequestTimeoutMs());
     }
 
-    // Called when config changes - reschedules with new interval
     public void reschedule() {
         synchronized (schedulerLock) {
             if (currentTask != null) currentTask.cancel(false);
@@ -71,7 +78,9 @@ public class MonitoringEngine {
 
     private void scheduleNext() {
         int interval = config.getCheckIntervalSeconds();
-        currentTask = scheduler.scheduleAtFixedRate(
+        // scheduleWithFixedDelay — next cycle starts AFTER previous finishes
+        // safer than scheduleAtFixedRate which can overlap
+        currentTask = scheduler.scheduleWithFixedDelay(
                 this::runCycle, 0, interval, TimeUnit.SECONDS
         );
     }
@@ -102,7 +111,8 @@ public class MonitoringEngine {
             long downCount = proxies.stream().filter(p -> p.getStatus() == ProxyStatus.DOWN).count();
             long pendingCount = proxies.stream().filter(p -> p.getStatus() == ProxyStatus.PENDING).count();
 
-            LogHighlighter.info(log, "Engine", "Cycle complete - up={}, down={}, pending={}", upCount, downCount, pendingCount);
+            LogHighlighter.info(log, "Engine", "Cycle complete - up={}, down={}, pending={}",
+                    upCount, downCount, pendingCount);
 
             alertService.evaluate(store.getAllProxies());
 
@@ -124,7 +134,7 @@ public class MonitoringEngine {
             int code = response.statusCode();
             if (code >= 200 && code < 300) {
                 proxy.recordSuccess(now);
-                LogHighlighter.debug(log, "Probe", "{} → {} ({}ms)", proxy.getId(), "UP", code);
+                LogHighlighter.debug(log, "Probe", "{} → UP ({})", proxy.getId(), code);
             } else {
                 proxy.recordFailure(now);
                 LogHighlighter.warn(log, "Probe", "{} → DOWN (HTTP {})", proxy.getId(), code);
