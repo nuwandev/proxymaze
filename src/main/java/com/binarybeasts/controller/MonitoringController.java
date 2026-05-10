@@ -1,222 +1,240 @@
 package com.binarybeasts.controller;
 
-import com.binarybeasts.domain.Alert;
-import com.binarybeasts.domain.AlertStatus;
-import com.binarybeasts.domain.ProxyCheckRecord;
-import com.binarybeasts.domain.ProxyNode;
-import com.binarybeasts.domain.ProxyStatus;
-import com.binarybeasts.domain.RuntimeConfig;
-import com.binarybeasts.domain.WebhookRegistration;
-import com.binarybeasts.dto.AlertResponse;
-import com.binarybeasts.dto.HealthResponse;
-import com.binarybeasts.dto.MetricsResponse;
-import com.binarybeasts.dto.ProxyCheckRecordResponse;
-import com.binarybeasts.dto.ProxyDetailsResponse;
-import com.binarybeasts.dto.ProxyIngestionResponse;
-import com.binarybeasts.dto.ProxySummaryResponse;
-import com.binarybeasts.dto.ProxiesCollectionResponse;
-import com.binarybeasts.dto.ProxiesRequest;
-import com.binarybeasts.dto.RuntimeConfigRequest;
-import com.binarybeasts.dto.RuntimeConfigResponse;
+import com.binarybeasts.domain.*;
+import com.binarybeasts.dto.AddProxiesRequest;
+import com.binarybeasts.dto.ConfigRequest;
+import com.binarybeasts.dto.IntegrationRequest;
+import com.binarybeasts.dto.WebhookRequest;
 import com.binarybeasts.service.AlertService;
 import com.binarybeasts.service.MetricsService;
-import com.binarybeasts.service.MetricsSnapshot;
 import com.binarybeasts.service.MonitoringService;
+import com.binarybeasts.service.WebhookService;
 import com.binarybeasts.store.InMemoryStateStore;
-
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.DeleteMapping;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RestController;
-import org.springframework.web.server.ResponseStatusException;
+import org.springframework.web.bind.annotation.*;
 
-import java.time.Instant;
+import java.util.Collection;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
 @RestController
 public class MonitoringController {
-    @Autowired
-    private InMemoryStateStore store;
 
     @Autowired
     private MonitoringService monitoringService;
-
     @Autowired
     private AlertService alertService;
-
     @Autowired
     private MetricsService metricsService;
+    @Autowired
+    private InMemoryStateStore store;
+    @Autowired(required = false)
+    private WebhookService webhookService;
+
+    // ─── GET /health ────────────────────────────────────────────────────────
 
     @GetMapping("/health")
-    public HealthResponse health() {
-        return new HealthResponse("ok");
+    public ResponseEntity<?> health() {
+        return ResponseEntity.ok(Map.of("status", "ok"));
     }
+
+    // ─── POST /config ────────────────────────────────────────────────────────
 
     @PostMapping("/config")
-    public RuntimeConfigResponse updateConfig(@RequestBody RuntimeConfigRequest request) {
-        requireConfig(request);
-        monitoringService.updateConfig(request.checkIntervalSeconds(), request.requestTimeoutMs());
-        return toRuntimeConfigResponse(monitoringService.getConfig());
+    public ResponseEntity<?> updateConfig(@RequestBody ConfigRequest req) {
+        monitoringService.updateConfig(req.getCheckIntervalSeconds(), req.getRequestTimeoutMs());
+        return ResponseEntity.ok(Map.of(
+                "check_interval_seconds", req.getCheckIntervalSeconds(),
+                "request_timeout_ms", req.getRequestTimeoutMs()
+        ));
     }
+
+    // ─── GET /config ─────────────────────────────────────────────────────────
 
     @GetMapping("/config")
-    public RuntimeConfigResponse getConfig() {
-        return toRuntimeConfigResponse(monitoringService.getConfig());
+    public ResponseEntity<?> getConfig() {
+        RuntimeConfig cfg = monitoringService.getConfig();
+        return ResponseEntity.ok(Map.of(
+                "check_interval_seconds", cfg.getCheckIntervalSeconds(),
+                "request_timeout_ms", cfg.getRequestTimeoutMs()
+        ));
     }
+
+    // ─── POST /proxies ────────────────────────────────────────────────────────
 
     @PostMapping("/proxies")
-    public ResponseEntity<ProxyIngestionResponse> ingestProxies(@RequestBody ProxiesRequest request) {
-        if (request == null || request.proxies() == null) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "proxies is required");
-        }
+    public ResponseEntity<?> ingestProxies(@RequestBody AddProxiesRequest req) {
+        List<ProxyNode> added = monitoringService.addProxies(req.getProxies(), req.isReplace());
 
-        List<ProxyNode> proxies = monitoringService.addProxies(request.proxies(),
-                Boolean.TRUE.equals(request.replace()));
+        List<Map<String, Object>> proxyList = added.stream().map(p -> {
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("id", p.getId());
+            m.put("url", p.getUrl());
+            m.put("status", p.getStatus().name().toLowerCase());
+            return m;
+        }).collect(Collectors.toList());
 
-        return ResponseEntity.status(HttpStatus.ACCEPTED)
-                .body(new ProxyIngestionResponse(proxies.size(), proxies.stream().map(this::toSummaryResponse).toList()));
+        return ResponseEntity.status(201).body(Map.of(
+                "accepted", added.size(),
+                "proxies", proxyList
+        ));
     }
+
+    // ─── GET /proxies ─────────────────────────────────────────────────────────
 
     @GetMapping("/proxies")
-    public ProxiesCollectionResponse getProxies() {
-        List<ProxyNode> proxies = monitoringService.snapshotProxies();
-        return new ProxiesCollectionResponse(
-                proxies.size(),
-                store.getUpCount(),
-                store.getDownCount(),
-                store.getFailureRate(),
-                proxies.stream().map(this::toSummaryResponse).toList()
-        );
+    public ResponseEntity<?> getProxies() {
+        Collection<ProxyNode> all = monitoringService.getAllProxies();
+
+        long up = all.stream().filter(p -> p.getStatus() == ProxyStatus.UP).count();
+        long down = all.stream().filter(p -> p.getStatus() == ProxyStatus.DOWN).count();
+        double failureRate = monitoringService.calculateFailureRate();
+
+        List<Map<String, Object>> proxyList = all.stream().map(p -> {
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("id", p.getId());
+            m.put("url", p.getUrl());
+            m.put("status", p.getStatus().name().toLowerCase());
+            m.put("last_checked_at", p.getLastCheckedAt() != null
+                    ? p.getLastCheckedAt().toString() : null);
+            m.put("consecutive_failures", p.getConsecutiveFailures());
+            return m;
+        }).collect(Collectors.toList());
+
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("total", all.size());
+        response.put("up", up);
+        response.put("down", down);
+        response.put("failure_rate", failureRate);
+        response.put("proxies", proxyList);
+
+        return ResponseEntity.ok(response);
     }
+
+    // ─── GET /proxies/{id} ────────────────────────────────────────────────────
 
     @GetMapping("/proxies/{id}")
-    public ProxyDetailsResponse getProxy(@PathVariable String id) {
-        ProxyNode proxy = monitoringService.findProxy(id)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Proxy not found"));
-        return toDetailsResponse(proxy);
+    public ResponseEntity<?> getProxy(@PathVariable String id) {
+        return monitoringService.getProxy(id)
+                .map(p -> {
+                    List<Map<String, Object>> history = p.getHistory().stream().map(r -> {
+                        Map<String, Object> h = new LinkedHashMap<>();
+                        h.put("checked_at", r.checkedAt().toString());
+                        h.put("status", r.status().name().toLowerCase());
+                        return h;
+                    }).collect(Collectors.toList());
+
+                    Map<String, Object> m = new LinkedHashMap<>();
+                    m.put("id", p.getId());
+                    m.put("url", p.getUrl());
+                    m.put("status", p.getStatus().name().toLowerCase());
+                    m.put("last_checked_at", p.getLastCheckedAt() != null
+                            ? p.getLastCheckedAt().toString() : null);
+                    m.put("consecutive_failures", p.getConsecutiveFailures());
+                    m.put("total_checks", p.getTotalChecks());
+                    m.put("uptime_percentage", p.getUptimePercentage());
+                    m.put("history", history);
+
+                    return ResponseEntity.ok(m);
+                })
+                .orElse(ResponseEntity.notFound().build());
     }
+
+    // ─── GET /proxies/{id}/history ────────────────────────────────────────────
 
     @GetMapping("/proxies/{id}/history")
-    public List<ProxyCheckRecordResponse> getProxyHistory(@PathVariable String id) {
-        ProxyNode proxy = monitoringService.findProxy(id)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Proxy not found"));
-        return proxy.getHistory().stream().map(this::toHistoryResponse).toList();
+    public ResponseEntity<?> getProxyHistory(@PathVariable String id) {
+        return monitoringService.getProxy(id)
+                .map(p -> {
+                    List<Map<String, Object>> history = p.getHistory().stream().map(r -> {
+                        Map<String, Object> h = new LinkedHashMap<>();
+                        h.put("checked_at", r.checkedAt().toString());
+                        h.put("status", r.status().name().toLowerCase());
+                        return h;
+                    }).collect(Collectors.toList());
+                    return ResponseEntity.ok(history);
+                })
+                .orElse(ResponseEntity.notFound().build());
     }
 
+    // ─── DELETE /proxies ──────────────────────────────────────────────────────
+
     @DeleteMapping("/proxies")
-    public ResponseEntity<Void> clearProxies() {
+    public ResponseEntity<?> clearProxies() {
         monitoringService.clearPool();
         return ResponseEntity.noContent().build();
     }
 
+    // ─── GET /alerts ──────────────────────────────────────────────────────────
+
     @GetMapping("/alerts")
-    public List<AlertResponse> getAlerts() {
-        return alertService.getAlerts().stream().map(this::toAlertResponse).toList();
+    public ResponseEntity<?> getAlerts() {
+        List<Map<String, Object>> alerts = alertService.getAllAlerts().stream()
+                .map(this::toAlertMap)
+                .collect(Collectors.toList());
+        return ResponseEntity.ok(alerts);
     }
 
-    @GetMapping("/metrics")
-    public MetricsResponse getMetrics() {
-        MetricsSnapshot snapshot = metricsService.snapshot();
-        return new MetricsResponse(
-                snapshot.totalChecks(),
-                snapshot.currentPoolSize(),
-                snapshot.activeAlerts(),
-                snapshot.totalAlerts(),
-                snapshot.webhookDeliveries()
-        );
-    }
-
-    @PostMapping("/webhooks")
-    public ResponseEntity<?> registerWebhook(@RequestBody Map<String, String> body) {
-        String url = body.get("url");
-        String id = "wh-" + System.currentTimeMillis();
-        store.addWebhook(new WebhookRegistration(id, url));
-        return ResponseEntity.ok(Map.of("webhook_id", id, "url", url));
-    }
-
-    @PostMapping("/integrations")
-    public ResponseEntity<?> registerIntegration(@RequestBody Map<String, Object> body) {
-        return ResponseEntity.ok(Map.of("status", "accepted"));
-    }
-
-    private void requireConfig(RuntimeConfigRequest request) {
-        if (request == null) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "config body is required");
-        }
-        if (request.checkIntervalSeconds() == null || request.requestTimeoutMs() == null) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "check_interval_seconds and request_timeout_ms are required");
-        }
-        if (request.checkIntervalSeconds() <= 0 || request.requestTimeoutMs() <= 0) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "config values must be positive");
-        }
-    }
-
-    private RuntimeConfigResponse toRuntimeConfigResponse(RuntimeConfig config) {
-        return new RuntimeConfigResponse(config.getCheckIntervalSeconds(), config.getRequestTimeoutMs());
-    }
-
-    private ProxySummaryResponse toSummaryResponse(ProxyNode proxy) {
-        return new ProxySummaryResponse(
-                proxy.getId(),
-                proxy.getUrl(),
-                statusValue(proxy.getStatus()),
-                proxy.getLastCheckedAt(),
-                proxy.getConsecutiveFailures()
-        );
-    }
-
-    private ProxyDetailsResponse toDetailsResponse(ProxyNode proxy) {
-        return new ProxyDetailsResponse(
-                proxy.getId(),
-                proxy.getUrl(),
-                statusValue(proxy.getStatus()),
-                proxy.getLastCheckedAt(),
-                proxy.getConsecutiveFailures(),
-                proxy.getTotalChecks(),
-                proxy.getUptimePercentage(),
-                proxy.getHistory().stream().map(this::toHistoryResponse).toList()
-        );
-    }
-
-    private ProxyCheckRecordResponse toHistoryResponse(ProxyCheckRecord record) {
-        return new ProxyCheckRecordResponse(record.getCheckedAt(), statusValue(record.getStatus()));
-    }
-
-    private AlertResponse toAlertResponse(Alert alert) {
-        List<String> failedIds = alert.getStatus() == AlertStatus.ACTIVE
-                ? store.snapshotProxies().stream()
+    private Map<String, Object> toAlertMap(Alert alert) {
+        // Active alert → live failed proxy IDs
+        // Resolved alert → frozen snapshot
+        List<String> failedIds;
+        if (alert.getStatus() == AlertStatus.ACTIVE) {
+            failedIds = store.getAllProxies().stream()
                     .filter(p -> p.getStatus() == ProxyStatus.DOWN)
                     .map(ProxyNode::getId)
-                    .collect(Collectors.toList())
-                : alert.getFailedProxyIds();
+                    .collect(Collectors.toList());
+        } else {
+            failedIds = alert.getFailedProxyIds();
+        }
 
-        return new AlertResponse(
-                alert.getAlertId(),
-                statusValue(alert.getStatus()),
-                alert.getFailureRate(),
-                alert.getTotalProxies(),
-                alert.getFailedProxies(),
-                failedIds,
-                alert.getThreshold(),
-                alert.getFiredAt(),
-                alert.getResolvedAt(),
-                alert.getMessage()
-        );
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("alert_id", alert.getAlertId());
+        m.put("status", alert.getStatus().name().toLowerCase());
+        m.put("failure_rate", alert.getFailureRate());
+        m.put("total_proxies", alert.getTotalProxies());
+        m.put("failed_proxies", alert.getFailedProxies());
+        m.put("failed_proxy_ids", failedIds);
+        m.put("threshold", alert.getThreshold());
+        m.put("fired_at", alert.getFiredAt().toString());
+        m.put("resolved_at", alert.getResolvedAt() != null
+                ? alert.getResolvedAt().toString() : null);
+        m.put("message", alert.getMessage());
+        return m;
     }
 
-    private String statusValue(ProxyStatus status) {
-        return status.name().toLowerCase();
+    // ─── POST /webhooks ───────────────────────────────────────────────────────
+
+    @PostMapping("/webhooks")
+    public ResponseEntity<?> registerWebhook(@RequestBody WebhookRequest req) {
+        String id = "wh-" + System.currentTimeMillis();
+        WebhookRegistration reg = new WebhookRegistration(id, req.getUrl());
+        store.addWebhook(reg);
+        return ResponseEntity.status(201).body(Map.of(
+                "webhook_id", id,
+                "url", req.getUrl()
+        ));
     }
 
-    private String statusValue(AlertStatus status) {
-        return status.name().toLowerCase();
+    // ─── POST /integrations ───────────────────────────────────────────────────
+
+    @PostMapping("/integrations")
+    public ResponseEntity<?> registerIntegration(@RequestBody IntegrationRequest req) {
+        String id = "int-" + System.currentTimeMillis();
+        return ResponseEntity.status(201).body(Map.of(
+                "id", id,
+                "type", req.getType(),
+                "status", "accepted"
+        ));
+    }
+
+    // ─── GET /metrics ─────────────────────────────────────────────────────────
+
+    @GetMapping("/metrics")
+    public ResponseEntity<?> getMetrics() {
+        return ResponseEntity.ok(metricsService.getMetrics());
     }
 }
-
