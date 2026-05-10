@@ -13,7 +13,7 @@ public class SlackFormatter {
     public static Map<String, Object> formatFired(Alert alert, String username) {
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("username", username != null ? username : "ProxyWatch");
-        payload.put("text", "🚨 Alert Fired — Proxy pool failure rate exceeded threshold");
+        payload.put("text", "Alert Fired — Proxy pool failure rate exceeded threshold");
 
         Map<String, Object> attachment = new LinkedHashMap<>();
         attachment.put("color", "#FF0000");
@@ -35,7 +35,7 @@ public class SlackFormatter {
     public static Map<String, Object> formatResolved(Alert alert, String username) {
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("username", username != null ? username : "ProxyWatch");
-        payload.put("text", "✅ Alert Resolved — Proxy pool has recovered");
+        payload.put("text", "Alert Resolved — Proxy pool has recovered");
 
         Map<String, Object> attachment = new LinkedHashMap<>();
         attachment.put("color", "#36A64F");
