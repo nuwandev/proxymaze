@@ -10,7 +10,7 @@ public class DiscordFormatter {
 
     public static Map<String, Object> formatFired(Alert alert, String username) {
         Map<String, Object> embed = new LinkedHashMap<>();
-        embed.put("title", "🚨 Alert Fired");
+        embed.put("title", "Alert Fired");
         embed.put("description", "Proxy pool failure rate has exceeded the threshold.");
         embed.put("color", 16711680); // red — integer 0-16777215
         embed.put("fields", List.of(
@@ -30,7 +30,7 @@ public class DiscordFormatter {
 
     public static Map<String, Object> formatResolved(Alert alert, String username) {
         Map<String, Object> embed = new LinkedHashMap<>();
-        embed.put("title", "✅ Alert Resolved");
+        embed.put("title", "Alert Resolved");
         embed.put("description", "Proxy pool has recovered below the failure threshold.");
         embed.put("color", 3580392); // green
         embed.put("fields", List.of(
